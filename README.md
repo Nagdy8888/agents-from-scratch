@@ -59,6 +59,8 @@ uv sync --extra dev
 source .venv/bin/activate
 ```
 
+**After `git pull`**, run `uv sync --extra dev` so your `.venv` stays in sync with `uv.lock`. See [AGENTS.md](AGENTS.md#dependency-workflow-uv--avoid-locksync-errors) for the full dependency workflow (adding deps, resolving lock conflicts).
+
 **Alternative: Using pip**
 
 ```shell

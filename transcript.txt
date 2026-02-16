@@ -1,0 +1,651 @@
+=============================================
+File: LCA-Ambient-C1-M1-L1-LangGraph101.txt
+=============================================
+
+Lance: [00:00:00] Welcome to our new LangChain Academy course. Building Ambient Agents with LangGraph Chat is a familiar user interaction pattern for agents where user requests something of an agent. An agent can call various tools and respond to the user with an output. But there are a lot of tasks for which chat isn't quite appropriate.
+
+As an example, many users don't want to actually tell an agent to do something. They want an agent to listen passively to certain events and respond to them automatically. Many times, we don't want agents to only handle one request at a time. We may want agents to handle many events concurrently. Sometimes we want agents to do work in the background for us and only notify us at specific points like when the work has been done,
+
+when 
+
+They need clarification on something. or when they want to notify us about something. And finally, with chat, you typically want [00:01:00] the agent to work quickly, but if agents are doing work in the background, it can take much longer. A user isn't waiting around. They're only notified by the agent when appropriate.
+
+So this collection of attributes is what we call Ambient Agents. Now, in this course, we're going to build an Ambient Agent, that can handle email, which is a great example of the kind of task you may want agents like this to take on and going to build an agent that can effectively manage your email inbox. It will ingest incoming emails and perform actions like draft responses or schedule meetings.
+
+Now, because these are sensitive tasks, we're going to show how to use human in the loop to approve certain agent actions. And importantly, we're also going to introduce memory. So that the agent learns from our feedback over time, and by the end of this course, you're going to understand all these components and how they can be used generally to build agents, [00:02:00] not just that handle email, but they can handle many different types of tasks.
+
+So how can we actually build this? Let's take the simplest possible email system. For every oncoming email, the assistant produces a response email. Now the assistant can send that response using tool calling. Which I'll talk about briefly in a minute. And if you think about the system in terms of agency versus predictability, where agency is the ability for the system to make different decisions and predictability is simply the predictability of decisions the system makes.
+
+This would be low agency, but high predictability. It will always call a tool to send off an email. For every incoming email that it receives. The central concept underpinning the system and agents more broadly is tool calling. Let's imagine we had an email API, this could be the Gmail API as an example.
+
+We can turn that into a tool and bind it to an LLM. When we do that binding process, the [00:03:00] LLM understands the arguments necessary to actually call that tool. So when it receives a request, it reasons about the request and can make a decision to call the tool, but importantly produces a structured output which contains the arguments that the tool actually needs. Independently then. The tool can be executed with those arguments in order to, in this case, send off an email.
+
+Now it's important to note that a simple system to always call an email tool is pretty limited. What if we don't want to respond? So there's many different ways people have found to effectively lay out workflows. This is just LLM calls within predefined code paths that can instrument specific logic.
+
+Here's an example where we'll put a router prior to that send email tool call. This [00:04:00] router then makes a decision about whether or not we're going to send the email. If we make a decision to send, we'll then go ahead and proceed to what we just talked about, an LLM with access to an email tool and the email ia sent.
+
+Now, if you think about this system, we've bumped up the agency a little bit. Now it has the ability to make a decision. It can decide whether or not to respond, and in turn, it's a little bit less predictable. We don't quite know what it'll decide given an incoming email. Now let's push this even further.
+
+Imagine we took that LLM and instead of giving it a single tool, write email, we give it a collection of different tools, and every time it called a tool, we just returned the output of that tool call back to the LLM. We'll let the LLM think about what was performed and decide what to do next. We let that proceed in a loop until some termination condition.
+
+This very simply [00:05:00] is an agent, and as noted, the agency is quite a bit higher than the other two. And one way to visualize that is with the initial system, for every incoming email, it made a single decision to write a response and send it. The agent in contrast, can choose any sequence of tool calls, given the tools it has access to.
+
+So in this case, let's say it had access to three tools. Check calendar, schedule meeting, write an email. It can pick any sequence it wants based upon the email input. Now, very important question is how to think about workflows versus agents. Typically, a good heuristic is if you can easily draw the control flow on a whiteboard, and it's very easy to enumerate in advanced a workflow's appropriate.
+
+It often is lower latency in cost than an agent. But if you actually need more flexible decision making and you can't quite know [00:06:00] until runtime, or in this case, until you receive an email, how you'll want to respond in terms of tool calls, then an agent's more appropriate and it's okay to trade off greater reasoning for higher latency and potentially higher cost.
+
+Now LangGraph comes in because it's a framework of low level components that lets you flexibly build and combine workflows, and agents. LangGraph is composed of nodes and edges, where nodes are just units of work. There's Python functions or TypeScript code that you control explicitly. So you'll just write those functions as you'll see shortly and everything that happens with the node, you have complete control over.
+
+Now edges are just transitions between nodes, which you're going to lay out in advance as you build your workflow or agent. This will dictate the control flow of the application. Now, one benefit of LangGraph is that because it uses [00:07:00] very low level components, just simply nodes and edges, you can build many different workflows as well as agents very easily.
+
+It allows you to kind of move to where you want to sit along this curve. You can build systems that are strictly agents. You can build workflows, you can combine agents and workflows together. Now, one of the things we built into LangGraph that we found to be very important in particular as we'll see here, building an ambient agent is a persistence layer that enables human-in-the-loop and long-term memory.
+
+As we'll see, it's important in many cases, that agents can pause and await human feedback. That's what the persistence layer affords us. Not only that, it also gives us long-term memory. The central idea behind persistence is the idea of checkpointing. So as you'll see, when you lay out your graph as a set of nodes, the checkpointer will save the state [00:08:00] of the application,
+
+and if we pause it, that state is available for us to resume from later. LangGraph also comes built with an interactive development environment, LangGraph Studio, which you're going to see extensively throughout this course. And it provides an easy on ramp to deployment. And you'll see that we can very easily go from code running in a notebook to a deployable application before actually building our agent.
+
+I want to make sure we understand the fundamentals of LangGraph very clearly and how it works with LangChain and LangSmith. Here's a general schematic where you can see the three together. LangChain provides many integrations that we'll be using, particularly chat models and some very useful methods for binding tools or structured outputs.
+
+LangGraph will be using for agent orchestration, LangSmith we'll be using for observability like tracing, as well as evaluation. And as you'll see, [00:09:00] these three all play really nicely together. This is how they're related. Now, chat models are the foundation of LLM applications. They're typically accessed through a chat interface, which takes a list of messages as input and returns the message as output. And LangChain is the standard interface for chat models called a init_chat_model, where you can just simply pass the name of your provider and model as well as any parameters that you want to use.
+
+Now LangChain has some universal methods for accessing chat models. Invoke just passes a single input to the chat model and returns an output. In this case, we can just pass a string and under the hood it's converted into a chat message and sent in for us. We can see, we get a message out. Now here's the message and you can see it has this content,
+
+as well as response metadata. Now, tools, as mentioned [00:10:00] previously, are utilities that can be called by chat models. We can very easily create tools in LangChain, from Python functions as an example, using this tool decorator. So now this function is a tool, and when we do this, the tool arguments as well as description are automatically inferred.
+
+These are things that are going to be passed to the model. So the model knows what this particular tool's expecting. Now, one thing that's very nice is that the chat model interface in LangChain provides some common methods for working with tools. In particular this bind tools method. We can simply pass a list of tools and some useful parameters.
+
+So this tool, choice parameter means that the model is enforced to call any available tool that it has. So we'll always have to call a tool. Parallel tool calls [00:11:00] simply enforces the model, calls a single tool at a time. Sometimes models can actually make multiple tool calls at once, and we can control that.
+
+So we define our model with tools, we invoke it just like before. In this case, we invoke it with, a message that's related to the tool it has, and we can see the tool call itself has the arguments needed to actually run the tool to, subject, content. We can pass those args directly to our tool, write_email and just run it.
+
+And then we can see our tool was executed. So this is a very important concept to understand. You can bind tools to LLMs. LLMs can call tools. Calling tools simply means that LLMs produce a structured output of arguments necessary to actually run the tool, and then the tool can be independently run. This is really the foundational component for building agents and what we see above [00:12:00] illustrates this simple flow that we saw before. We bind a single send_email tool to an LLM and enforce it to call that tool when responding to incoming emails or requests.
+
+Now as discussed. Workflows and agents really extend from this. In the case of workflows, we can embed LLM calls in predefined code paths as we see here with a router prior to our LLM that calls our email tool. Agents just extend this a bit further, allowing LLM to sequentially call tools in a loop. Now, LangGraph sits underneath any workflow or agent and it provides a few specific benefits.
+
+We're going to walk through now in code, in some simple examples. The first benefit is control. It makes it very easy to define or combine agents and workflows. The second benefit is persistence. It provides a way to persist the state of our graph, which enables both memory and human-in-the-loop, which we're going to see.
+
+[00:13:00] And it provides an easy on-ramp for testing, debugging, and deploying applications. Now, let's talk about control first. LangGraph lets you define your applications as a graph with three important things that you need to specify, the State or the information that you want to track over the course of the application, Nodes,
+
+how do you want to update the state over the course of the application, and Edges, how do you want to connect the nodes together? Now we use the state graph class to initialize a LangGraph graph, and we just pass in a state object. Now, the state object is basically the schema for the information we want to track over the course of the application.
+
+Now, there's a few options for defining your schema. As an example, TypedDicts are fast, but they don't support default values. DataClasses are actually quite nice because they do support defaults. Pydantic is a bit slower, but allows for type validation. [00:14:00] So you can choose the schema that's appropriate for your application.
+
+In this simple case, let's just use a TypedDict. You can see I'm defining my state schema here. It just says two keys. Request an email, both strings. I then initialize my state graph with my schema. Now let's take what we did previously. We call our model of tools with an input request. We get the arguments and we call a tool.
+
+We can put that all in a node in our graph, and you'll see two interesting things about this. One, the node takes in our state object. Remember, we define that above and I chose a dictionary. From the dictionary, we can extract any keys we want and utilize them. Now the second thing is it returns a dict.
+
+This return is basically updating our state. Now by default, when we return from a node, it overwrites that particular key in our state. But [00:15:00] when we define our state object, there are ways to customize it to do different things like apending, and we'll talk about that shortly. In this simple case though, we're going to call our model of tools.
+
+It's going to produce a tool call. We then pass those arguments to a write_email tool. We get an email out and we'll update or overwrite our state key, 'email', with that output. Now we can specify the control flow by adding nodes and edges to our graph. We'll add our single node, write_email node and two edges to start.
+
+Go to that node from that node go to end. Finally we compile it. When we've done these things, we can very easily then run our graph just by calling invoke and we can pass an initial value to our state. In this case, we'll initialize our graph with [00:16:00] request and we see the output of the tool call is written to email in our state.
+
+The state dict has just returned. We run our graph. Now in the above case, we very simply used edges to start, go to our single node and then go from our single node to end. We can also do conditional routing using conditional edges. Let me show an example of that. Now let's split our graph up into two different nodes call the LLM and run our tool.
+
+Now we can add a conditional edge that looks to see, if a tool call is made by call_llm, and if so, run the tool if not just end. This is a very common thing that we do when we build agents. We use conditional routing as a termination condition. If the agent is making a tool call, we run it. If [00:17:00] not, we end and exit the agent loop.
+
+So this is a very useful thing to be aware of. Now you see something else that's interesting. This time, I initialized my graph with MessageState. This is a prebuilt state object in LangGraph that is a single key messages, and when we update it, as you see here, it just simply appends to that list of messages as opposed to overwriting.
+
+Now, this is also very useful when you're building agents because you want to basically accumulate messages over the course of the agent's tool calling trajectory. You'll see in this should_continue edge, all we do is we get the last message from the list of messages. We check if it's a tool call, and if so, we return the name of the next node to go to run_tool.
+
+Otherwise we end. [00:18:00] So see an interesting difference with conditional edges. You return the name of the next node you want to visit, but with nodes, you return updates to your state. So we'll compile this and show the graph. So now we start, we call our model, and depending upon whether the model likes a tool call, we'll run the tool or not.
+
+Let's go ahead and try that out. And there we go. We pass our input message. Our model makes a tool call. We then route to the run tool node and the tool is run as we see here. Now with just these local components. You can build a lot of different things. Now because agents are so common, we have a pre-built abstraction for it, which I show right here called Create React Agent.
+
+Now to this agent abstraction, we just pass our model, our list of tools, and a [00:19:00] system prompt. We run the agent just like before, passing in messages and we can see that the model in this case makes a tool call. The tool is run. Now here's the little difference relative to what we saw before. Remember before, after tool is run, we just end. With the agent, though as discussed, tool calls are returned back to the LLM.
+
+So what happens is the model then sees that tool call and provides us a response. Indicating the tool is called and does not call any further tools. That then exits the tool calling loop and the agent ends. So now we've seen the basic components of LangGraph and we've introduced the agent abstraction to LangGraph.
+
+Now, a very important thing when building agents and workflows, as we're going to see a lot more later, is the idea of persistence. It can be very useful to allow agents to pause during long running [00:20:00] tasks. LangGraph has a built-in persistence layer to enable this, implemented through checkpointers. Now what happens is, after every node, the checkpointer saves the state of the graph.
+
+So if you pause your graph, the state is saved and available for resuming at a later point in time. And let's show an example of this. I can take that same create_react_agent abstraction and pass it a checkpointer. I'll ask something about. Good practices for writing emails. Now with a checkpointer, you'll see I need to now pass a thread_id.
+
+This basically groups checkpoints together so I can reference them later. Our agent ran and what's really nice is we can get this current state of our agent just by passing in the thread. We call agent get state and we can go ahead and extract all the messages currently in the state of our agent. Now, currently we see we just have our input [00:21:00] and we have the agent's response.
+
+Now let's continue the conversation. All I need to do is reinvoke my agent and I'll say, Hey, great. Let's use lesson three. Be concise to craft a response to my boss, and I can just pass him the config. That config indicates the thread. I can run. We can see the agent then, has access to the prior messages because they're saved to the thread and it proposes an email.
+
+I can then follow up again by passing in that thread ID and say, I like this. Go ahead and write the email. And now you can see it goes ahead, calls the tool. The tool's executed and it confirms that the email's been sent. Now another very powerful thing that [00:22:00] Checkpointing allows is that we can interrupt our graph at very specific points.
+
+Here's an example of a very simple graph where I want to interrupt at a particular node, human_feedback, to collect feedback from the user. All you need to do is add this interrupt object to the node, and compile my graph with a checkpointer. We can see our graph flow here. We'll create a thread like before. We'll run a graph.
+
+Now I'll just simply stream updates to each node as the graph is running by indicating this stream mode updates. Now what's interesting here, when we hit that human feedback node, we can see the graph emits an interrupt, with a value, 'please provide feedback', and that's exactly what we pass to that interrupt object. Now to resume,
+
+all I need to do is use this command object in LangGraph and pass in whatever human feedback [00:23:00] I want. Now to resume from the interrupt, we just invoke our graph again with the command object and we pass resume. We can just simply pass a string and our feedback gets passed through to our node and written to our state as user feedback.
+
+So whatever we pass to this resume, in command, after an interrupt, is directly passed into our graph, and we can see right here is where we received that feedback, wrote it to state. Now, because I set these two environment variables, everything we just did is logged to LangSmith. I can then look at my LangSmith traces for any of the above executions.
+
+Here's an example looking at our agent and we see here in LangSmith. Here are our graph nodes for our agent. We can open this up. This shows us the model call specifically. Open [00:24:00] that up and you can see, here are the bound tools. We actually called the write_email tool right here. Here is the list of messages the LLM received, and then here is the resulting tool call.
+
+We then went to the tool node, open that up, and you can see here is the tool invocation and the output of our tool. As a tool message. And finally, that went back to our agent. We can see that call model node. We can look at the LLM call specifically, see that no tool is called, and a model just responds with an AI message saying the email's been sent.
+
+So LangSmith is a very nice way to dig into your traces and it also logs useful metadata for you as you can see over here. Now in addition to LangSmith, I want to talk about another important and useful feature in the LangChain ecosystem that allows us to deploy [00:25:00] agents or workflows very easily, and that's called LangGraph Platform.
+
+So everything we've done here in a notebook is great for testing and for rapid prototyping, but what if I want to turn any of this code into a deployable application? That's where LangGraph Platform comes in. It makes it very easy to go from a workflow or agent to a deployable server with an API that we can use to interact with our graph.
+
+In addition, LangGraph Platform gives us an interactive IDE called LangGraph Studio. It's a very useful way to further inspect and debug our agent. So to use LangGraph Platform, all we need to do is ensure that our project has a structure as shown here. So the thing that really matters here is this LangGraph.json.
+
+This is just a configuration file. You can see it in the root of this repo. This just specifies dependencies, graphs, environment variables, and other things needed to [00:26:00] start the LangGraph server. It's a pretty simple configuration. The main thing the configuration will have is just simply the graph names and the path, as an example, in a repo.
+
+In this directory, we have a file called LangGraph101.py, which contains some of the code that we just prototyped in this notebook as a deployable graph. Now with LangGraph Platform, there's a few different deployment options I want to make sure are clear. So the simplest and free option is just local deployment that runs on your local machine.
+
+And all I need to do from the root of this directory is run langgraph dev. Now, this still has persistence. Checkpoints will just be written to the local file system. Now there also are various self-hosted options for deployment, and there's hosted deployments which use Postgres for persistence. So we'll just run langgraph dev from the root of our repo and see what happens.
+
+So we've run [00:27:00] langgraph dev. You'll see this spin up in your browser. This is LangGraph Studio. You can scroll through the various graphs that exist in this repo. Click on langgraph101. This is one of the graphs we built in the notebook. We can open up this input pane, open up messages, pass in a message, submit, and you can see the state of the graph over here, which shows each node in the graph, as well as the state updates at that particular node.
+
+You can also click on this 'open run in LangSmith' and look at the trace to see the LLM call in the call LLM node, as well as the tool execution in the run tool node. Now, another nice thing I'll point out is that you can see the API docs for local deployment right here, and you can browse through to see all the end points available to you.
+
+So we've covered many of the foundations needed for this course. We've covered LangChain and some of these useful [00:28:00] interfaces such as init chat model tools and using chat models. We talked about the basics of LangGraph, and agents versus workflows. We also showed both LangSmith as well as LangGraph deployment and LangGraph Studio.
+
+We covered persistence and interrupts. We also covered LangSmith and observability, as well as LangGraph Platform, showcasing local deployments and LangGraph Studio, because these are really all the foundations you're going to need for the rest of this course.
+
+
+
+=============================================
+File: LCA-Ambient-M2-L1-V2-Building-Agents.txt
+=============================================
+
+[00:00:00] Now that we've seen the fundamentals of LangGraph, I want to review the agent itself and how we're going to approach building it over the course of this class. We're going to build an ambient agent that can run your email. It's going to have four main components. The first is the agent itself, which we're going to build first.
+
+You see that in blue. The second is actually testing it, which you see in orange. We'll show how to do that using LangSmith. The third is adding human in the loop, and the fourth is adding memory to learn preferences over time. Now for building the agent itself, we're going to use LangGraph as we've introduced, and we're going to showcase how you can combine an agent and specific workflow components, notably a router together into a functioning system.
+
+While building this, we're going to be making use of LangGraph Studio, as you saw previously as [00:01:00] well. Now with this agent built, would you actually turn it on? Many people would probably say no. That's where testing comes in. This is a survey we put out last year asking around 1,400 professionals the major challenges associated with building and productionizing agents.
+
+Many mentioned performance, quality, cost, safety, and latency. For these reasons, testing to benchmark the performance of our agent is going to be very important. We'll show how to build data sets in LangSmith. We'll show how to build tests in LangSmith, and we'll show we can use this to actually benchmark the performance of our agent.
+
+For an agent like this as oversight over our email, the cost of error is very high, so we're going to show how to incorporate human in the loop with our agent. We'll add human in the loop to gate particular sensitive actions like certain tool calls. We'll show Agent Inbox as a lightweight UX [00:02:00] for this. Our agent will simply send all notifications to inbox, or we can review, approve, or edit specific tool calls, like sending the email itself.
+
+Based upon the feedback we give the agent in inbox, we're going to then update the agent's memory so it'll learn our preferences over time. So here's a map of the various lessons. We're going to start with building the email assistant. We're then going to evaluate it using LangSmith. We'll then add human in the loop and show how to use Agent Inbox. And finally we'll add memory and deploy it.
+
+So now let's walk through the code of actually building our agent, and to motivate it, I'm going to show you the agent working in Studio. This is what we're going to build. I can pass in an email, run. We'll triage the email accordingly. If triage determines that we should respond, our response agent will [00:03:00] use its tools to respond appropriately.
+
+We can follow, in this particular case, the input, the triage router decides to respond to the email. It passes the email in messages to our agent. Our agent then decides to make a tool call to write email. The tool call is executed and then we finish. So let's dive into the code now, and we're in this blue block right here.
+
+So that's what we're going to build out first. You've already seen how to define tools in LangChain. We're going to go ahead and define a few tools that are relevant for an email system, write_email, schedule_meeting, check_calendar_availability, and done. Now, of course, these are just mock tools. We're not actually hitting a real email API for the purpose of this notebook and building out our assistant, but the repo does have the option to connect it into, as an example Gmail [00:04:00] if you want to.
+
+Now, let's talk about the philosophy of building our assistant. Remember, we talked about workflows and agents previously. If we think about the control flow of our application, for every incoming email, we want to make some decision about it. Do we respond, just notify the user or ignore it?
+
+Because of this step we always want to do first, we hard code this router as the first step in our overall assistant. And if the router decides to respond, we then send to an agent. Now, why do you use an agent here? Well, for the email response task, it's a little bit more open-ended. The tools you want to call depend a bit on the content of the email itself.
+
+As an example, sometimes you might respond directly, other times you might schedule a meeting. Sometimes you might do both. And so the email response process is a bit more open-ended, and in that case, [00:05:00] we use an agent. Now the nice thing is we'll show how easy it is to compose these two things in LangGraph.
+
+So let's build our router first. The router handles the triage decision. We'll define our state. We introduced this previously. We'll just use MessagesState, which is that prebuilt state object in LangGraph, and we'll add two new keys, email_input and classification_decision. So our state object in total has three keys messages, email_input, and classification_decision.
+
+Now we're going to define the triage node. I'm going to show a very simple, but generally nice trick for doing things like routing using language models. Many language models support structured outputs. In fact, that's what's happening when we perform tool calling. But because this is so common, our init_chat_model interface has a [00:06:00] particular method, with_structured_output, where you can pass in a schema. The output will be coerced to adhere to that schema.
+
+Here's an example where we pass the Pydantic model with two fields, reasoning and classification. We provide descriptions of each field, and when we bind this schema to our model, the model is aware of those descriptions and uses them to help coerce its output to meet this particular schema.
+
+So what we're doing here is we're telling the model. To make a classification decision, select from these three options. Ignore, respond, or notify and give your reasoning. Now, as we saw previously, we can pass in the state. This state's going to contain an email input. We'll just use some simple utils to parse it and format some prompts that we have defined in our repo triaging the incoming email.
+
+We [00:07:00] then invoke our router with a list of messages that contains our prompts, and this output is going to be a structured object that adheres the schema that we passed, so we can extract the classification decision from that object. If the classification is respond, we're going to go to the response agent and we're going to update our messages state with the email so that the response agent knows what to respond to.
+
+Now if the decision is to ignore or just notify the user, we go to end and nothing happens. In all cases, we update state with a classification decision. Now you'll see something interesting here. We return with this command object. So what's happening here? Before we talked about returning just with, for example, a dict to update our state.
+
+Command allows us to both update the state, as we see here with [00:08:00] this update, but also decide where to go next in our graph. So it's a way of combining state updates and control flow in a single step. So in this case, it just saves us a little bit of time because we don't have to specify all those edges from this particular node to end, or response agent.
+
+Now here's where we'll build our agent. Now we already have some good intuition for building agents from before. But in this case, I'm going to show how to build agent with each node individually. So you can kind of see what's under the hood of our Create React Agent abstraction. So first we just pull in our agent prompt, and this will just indicate the tools that the agent has available to it.
+
+And our agent_system_prompt. And this is where we just very simply define our instructions. Now we'll define the node that makes our LLM call. In this case, we define [00:09:00] the tools as a list. We bind them to our model. We format our prompt, which includes tool descriptions as well as any background preferences. Updating our messages state with the LLM output.
+
+Now we define a node called tool handler, which to be responsible for just executing the tool. Remember we saw all these principles previously, so this is really nothing new. We'll go ahead and get all the tool calls from the prior message. We'll invoke it and we'll update our state with the tool message indicating the tool has been called.
+
+Now here we'll add some simple conditional routing, which basically says continue calling tools until the done tool is called. Remember before, we use the termination condition as no tool call has been executed. In this case, a specific tool, done, is our termination [00:10:00] condition. This is just another way to set up agents with an alternative termination condition.
+
+Now we can lay out our agent graph. This is very simple. We add our LLM node, we add our tool handler node. We add our conditional edge to decide whether or not to continue based upon the tool called. And we can see, what's going to happen is the LLM will run, it will call a tool because we enforce tool calling and it'll continue calling tools until it calls the done tool, at which point it'll exit.
+
+Now, a very nice thing about LangGraph is you can easily compose different things. Remember we previously defined our triage router. We can add the triage router as a node to this larger workflow and add our response agent, which we defined here as a node. This effectively means that the agent [00:11:00] is a subgraph of our overall workflow.
+
+We'll add a start edge to initiate the triage router and we'll compile our graph. So now you can see we go to the triage router. Depending on the decision made by the triage router, we may go to the response agent, which will handle the email response, and then we'll end. Now let's test running it. In this case, you can see the classification decision is just notify and nothing else happens.
+
+Now let's try with an email for which we're expected to respond. The decision is to respond, now you see something interesting. The initial message is the email with this appended, Respond to this email. Where did that happen? Remember that was actually done up in [00:12:00] the triage router. If the triage router makes his decision to respond, all we needed to do is update the state of our graph with an initial message saying, Respond to this email.
+
+The agent subgraph used that messages key, so it received then that message from the router and could in turn respond to it. That's the beauty of using this state object. It's passed between the nodes of your graph and our router can communicate with our agent very simply through state. And we can see our call email tool is done. And we end.
+
+Now, just to bookend this. Remember, we ran langgraph dev to start a local deployment, which allows us to use LangGraph Studio to interact with our agent. So here's what you'll see when you open Studio. Again, you can just select various agents from your dropdown list. Go to email assistant.[00:13:00] 
+
+Here is the graph we actually just built in the notebook. Now what you can do is open this up. You can see our agent subgraph inside here. Pass an email. The router classifies it, the response agent handles it, and we finish. So this reproduces what we saw in the notebook, but in a nice visual environment and you can inspect each step if you'd like, and the state updates made. You can see we finally go to done.
+
+As mentioned before, you can click Open Run LangSmith, and we can now view the trace. We can see here's our triage router. This is the triage decision. You can look at all the prompts used, and then you can look at the agent itself. The agent made a tool call to write_email, and then it called the done tool to end.
+
+So now [00:14:00] you've seen how to build an agent from scratch, how to connect it in a workflow to a router, how to run it, and how to visualize it in Studio. So now we can build from here to evaluate it, add human in the loop, and then finally add memory.
+
+
+
+=============================================
+File: LCA-Ambient-M3-L1-V2-Evaluate_compressed.txt
+=============================================
+
+[00:00:00] So we've shown how to build our agent, but the question is, would you actually turn it on? For most people, the answer is no. That's why testing is so important. We're going to show how to set up tests using LangSmith. Now, one interesting point about agents is you can perform evaluations at different levels of granularity.
+
+So here's our overall system, which we talked about before. We have an email routing step followed by an agent that handles the response. The most natural thing to think about with agents is end-to-end evaluation, so just evaluating the agent's final response, but it's also possible to evaluate sub-components of the system.
+
+In this case, we perform a triage step that could be independently evaluated pretty easily because a triage decision is a discrete thing that we can very easily lay out ground truth [00:01:00] examples for and test whether or not just routing was correct. Now, another type of reviewing test we could think about in this context is agent trajectory.
+
+So instead of looking at the final result of the agent, you can actually look at the individual decisions that the agent made. And in particular, when I say decision, I mean tool calls. So this allows you to assess whether or not the agent took the correct steps or not. Now it's interesting to call out that we're going to be evaluating, in the case of the unit tests, specific decisions like the specific triage decision or like the specific tool call.
+
+And for something like this, you can do a pretty simple evaluation heuristic, like a string comparison. Here's a toy example where let's say the output of our graph was [00:02:00] respond. We have a reference output. In this case, it is indeed respond. We could have some heuristic evaluator that just looks at the two strings, ask whether or not they're the same.
+
+In this case, the answer is true. Now, let's think about a trickier case. Sometimes, like in the case of the end-to-end evaluation, we're actually going to be evaluating an email itself. Now, what does it even mean to evaluate an email? There isn't really a notion of a ground truth email, but what's common in cases like this is what people call criteria evaluation.
+
+You can outline some general criteria that you want a high quality response to follow for the particular input, and oftentimes people use an LLM itself to judge the response relative to the criteria. Here's a toy example of an email. Hi Nick. I just scheduled a meeting for us on Tuesday at 3:00 PM. Best, Lance. [00:03:00] And the success criteria is stated as schedule a meeting on Tuesday.
+
+An LLM judge can look at that and deem it to be true. So in cases where what you're trying to evaluate is just unstructured text, increasingly people use LLMs as judges, along with some criteria to evaluate. But if you're evaluating a discrete decision, for example, you don't need to use an LLM for that.
+
+You can use, as an example, very simple heuristic or hard coded evaluators that look at string matching as an example. Now, what we're going to be doing here is setting up unit tests that actually just use structured evaluation or heuristic evaluation of routing decisions or tool calls. These can just compare strings directly.
+
+They're very easy to set up and they're very fast. Now, for our end-to-end evaluation, we're going to need, we're actually going to need to evaluate emails, and we're going to [00:04:00] use an LLM as judge evaluation approach for those cases. So you'll see how you set up all of these really easily.
+
+So now let's actually evaluate the agent. And again, looking at our overall map, we're now here in orange, our agent's been built. We want to test it. Now there's two different ways to run evaluations in LangSmith. You can use pytest, which is familiar to many developers and very intuitive. In this case, use pytest just as you normally would. You specify some test logic as a function. You specify some examples to test, and the results are very simply logged for you to LangSmith.
+
+Now alternatively, you can actually build and retain datasets in LangSmith. Many people like this, particularly if you're a team collaborating and building out a test suite over time. datasets can be generated from [00:05:00] production traces and given a dataset, you can define evaluators that will be applied to every test case in the dataset automatically using LangSmith Evaluate API. So we'll show that as well.
+
+Now, for both evaluation approaches, you need to have a good set of test cases. In this particular case, test cases can be composed of an incoming email, a ground truth classification, an expected set of tool calls and criteria for a good response. So we're going to go ahead and grab this example dataset that we have defined in the repo, and let's look at one of the test cases.
+
+So here's an example email sent to me. Here is the expected triage decision. Respond. Here's the expected set of tool calls, write email, then done. And here's criteria for an acceptable response. [00:06:00] So let's set up a unit test for the correct tool calls, and we'll use pytest to do this. So this is actually very simple to set up.
+
+This is going to be our test function. We're going to use this decorator to log it to LangSmith, and we use this decorator to specify the inputs that we want to run. So in this case, let's just pass in an email input and expected tool calls. Now these are passed to our function as we see here, and we can go ahead and just run our email assistant on the input email.
+
+We can use this nice utility extract_tool_calls to get the tool calls from the result message list. And we can just add this very simple logic to check if any tool calls are missing. You can see we import testing from LangSmith. This [00:07:00] allows us to log things to LangSmith for the test run.
+
+We'll log the missing tool calls, extracted tool calls and the response. You can see we just assert that there's no missing tool calls. Now to run this, I just run this command at the root of a repo, and this script test_tools.py is just literally this code right here. Now, if we open up LangSmith, we go to dataset and experiments, and we can see here is the test suite we specified, we ran from the terminal. Click on the experiment I just ran.
+
+Now we can view this in compact or full. Look at full. You can see the full set of inputs, the set of logged outputs, pass fail, latency, and some other useful statistics. And these are both of the email examples that we passed into pytest. So we've seen that we can use [00:08:00] pytest to run a unit test for one particular part of our agent.
+
+In that case, we investigated tool calling and we ran pytest on two examples. Now, alternatively, let's set up a unit test that looks at the triage decision. And in this case, we're going to set the eval up a little bit differently. We're actually going to define a full dataset in LangSmith of emails and corresponding triage decisions and just run evaluation on that dataset directly.
+
+So you're going to see here that I'm going to import a bunch of triage examples that we set up already, and we use the LangSmith client to create a dataset just like this. So now this dataset lives in LangSmith. Again in LangSmith, I can click datasets, I can just search for a dataset by name. The dataset exists, and here it is.
+
+Click [00:09:00] examples, and you can see all the examples in your dataset. In this case, it has an input, which is an email and a reference output. Now, the dataset has a structure. It looks like this. For each example, there's an input. You can see that right here. Likewise an output. You can see classification decision here.
+
+Now we can find a function that very simply takes the dataset inputs and passes them directly to our agent. That's just this, the input here is just this, so we can get the email input and pass that into our assistant. Now, the output in our dataset here, is our reference. The agent output is what we want to test. The agent output is exactly what we output [00:10:00] from this function here. So it's a dictionary with a single key classification decision. So we can fish that out and compare that to the reference output, which we can see as a single key classification.
+
+Now, the question you might ask is, how does this all get hooked together? So in particular, how do the inputs, from our dataset here, get piped into this function. Then how does the output of this function get piped to our evaluation function here? Likewise, how does the reference output in our dataset get piped to our evaluator here? That's what the LangSmith Evaluate API does for us. It does all those mappings, so all we need to do is pass in the dataset, our target function that runs our assistant, and our evaluator function.
+
+And you can [00:11:00] kind of visualize this here we have our dataset specified. We have a function that runs our agent on dataset examples, and we have a test function that takes the reference output as well as their agent output and returns, in this case, true or false. So here is LangSmith's Evaluate API, where we pass these things in.
+
+This is the function that runs our agent. Here's the dataset. Here's our evaluator, passed as a list, and we can pass an experiment prefix. Now, if I go back to LangSmith, look at my dataset name, I can see my experiment, open it up, view it in compact view. You can see, I can look at the reference outputs versus the agent. I can look at the scores and I can see other statistics as well.
+
+So what's nice in this case is it automatically runs my agent and gets all test cases in [00:12:00] the dataset, which is a bit different than pytest. With pytest, you manually add the test case you want to look at to your function. But here you have a single dataset. You just define any number of evaluation functions that you want to run against it. So it's a slightly different way of thinking about testing and evaluation that's complimentary with using pytest and can be useful in certain cases, like if you have a large evaluation set and you want to run a number of different evals against it.
+
+We've shown unit tests for the triage step using the Evaluate API and for tool calling, using pytest. Now let's show how you can use LLM as judge to evaluate the end-to-end performance of the agent, and in particular, evaluate the email versus some success criteria. So that's kind of shown here. We need a slightly different approach because now we're looking at unstructured email outputs [00:13:00] relative to some general criteria.
+
+So a very nice trick to this type of evaluation is simply to use structured outputs, as you can see here. Grade, justification in our schema bound to an LLM. So the LLM will produce outputs that follow the schema. We can take an email and associated success criteria and look at them. So the email is from Alice asking about API Docs. Success criteria is you send an email to acknowledge the question and confirm it'll be investigated.
+
+We can invoke or email assistant with the email input as shown here. Then you'll see something kind of nice here. We can take that output right here, grab the messages. This is just some message formatting. I clean them up, create a string, pass them to my evaluator LLM, with a general prompt to instruct how [00:14:00] to grade responses, the successful criteria as shown here, and the messages.
+
+We have an LLM examine that and give us a grade. We can see the grade is true. This is meets the criteria by using the email tool call to acknowledge the question and confirm it'll be investigated. I want to call something out that's a little bit tricky about LLM as judge evaluation. In this case, there are two different things I had to iterate on to get this to work reasonably well.
+
+One is the LLM as judge evaluation prompt. That's what you see here, this response criteria system prompt. I print it out here. But you do have to be careful to provide good instructions to your grader. So here are the important evaluation instructions. I instruct that the responses format as a list of messages.
+
+The criteria is a set of bullet points. Evaluate the response against each bullet point individually. All bullet points [00:15:00] must be met in order to get a grade true or pass. Try to cite specific text that satisfies or fails to meet the criteria, the objective, and so forth. So challenge one with LLM as judge evaluation, is that you have to write well structured and descriptive evaluation prompts.
+
+That's challenge one. Now challenge two in this particular case is the success criteria per email. Again, we can look at that right here. In this case, the success criteria was send an email with the write_email tool call to acknowledge the question, confirm it'll be investigated. Now, what I've found is if you make this criteria too specific, like answer in this particular way, it can be too stringent because you're evaluating kind of an unstructured natural language output, and the email can be answered in many different ways.
+
+So you have to be careful not to make this [00:16:00] criteria too specific. Also, you don't want to make it too general. Like as an example, in this case, the email system makes a tool call. That's a bit too general. What I show here is what I found to be a fairly reasonable way to structure the criteria, indicating here's the tool call that I want called, and here's generally what I want the response to capture. Acknowledge the question, confirm it'll be investigated.
+
+So I do want to call out. When you're setting up LLM as judge evaluations on kind of unstructured text outputs, you have to be careful to define your LLM as judge evaluation prompt as shown here, and whatever grade criteria you're using. Again, if it's too stringent, you'll find that it's failing too frequently. It's too general, it'll pass too frequently.
+
+So you have to iterate on this and think through it carefully. But I found, [00:17:00] after an hour or two of iteration, I was able to get success criteria for my set of emails that captures the essence of what I want in each email output and results in stable evaluation performance, meaning that outputs are graded reasonably and consistently across multiple runs on this evaluation set.
+
+Now we can run this LLM as judge evaluation really easily. So the repo has a tests folder, with this script, test_response.py, which will run it against our set of email examples and associated criteria as you saw above. Now, test_response.py basically reproduces what we just showed, and we use pytest to run this evaluation and we just pass in the email input as well as the criteria.
+
+We use the same grading schema as shown above, and we prompt our grader just as shown above. We run that across all of the examples simply using pytest [00:18:00] and logging to our LangSmith test suite, which you see we supply right here when we kick off the evaluation. So now let's look at this experiment in the LangSmith UI.
+
+Go to your datasets and experiments. Click and you can see runs of your experiment. Here's what I just ran, open it up. Here are all of our email inputs. We can use this to open up the traces for our evaluation. We can see here is our email assistant triage router runs, response agent runs, and this final call is our LLM.
+
+You can see here is the system prompt for the grader. The criteria grade schema is called as a tool, and we can see here is the output. We get the grade, we get the justification, so it's very nice. We can actually [00:19:00] audit our elements judge evaluator really easily across all of these examples, and we can look and see at the scores.
+
+We can see most pass one fails, we can look at why we also get some other useful metadata over here, like tokens and cost and overall success. Now, one thing I'd like to show you, copy this experiment name, go back to the notebook, paste it in here. You can just using the LangSmith client, you can read the project in and it can very easily get statistics. So once you've run an experiment, you can pull in all the data really easily using the LangSmith SDK, and work with it as an example in a notebook.
+
+So now we've seen three different ways to evaluate our agent. We set up unit tests for the routing decision and for tool calls. We show that those can both be evaluated really easily using heuristic evaluations that just do string comparisons relative to the ground truth tool call or decision.[00:20:00] 
+
+We also showed an end-to-end evaluation on the email outputs using LLM as Judge evaluator that grades email outputs versus some criteria, and we showed how to use pytest or the evaluator API for your experiments. So this gives you a pretty strong foundation for running evaluations on agents using LangSmith.
+
+
+
+=============================================
+File: LCA-Ambient-M4-L1-V2-HITL_compressed.txt
+=============================================
+
+[00:00:00] We've seen how to build our agent. We've seen how to evaluate it, but few would actually trust it to run their email inbox. Email is a very sensitive task and many people would want some degree of approval over emails that the agent sends. So now we're going to add that capability. We're going to show how to add human in the loop to our email assistant. And we're going to showcase this, Agent Inbox, which is a simple interface we've built for working with ambient agents.
+
+What's going to happen is our agents going to be equipped with the ability to notify us if it wants to make certain tool calls, like as you see here, write emails, ask us a question, or notify us about a particular email. Now, what's cool is this gives us the ability to inspect the agent's work.
+
+Here's an example. The agent asks us a [00:01:00] question about an incoming email. In this case, the agent wanted clarification. It didn't have context to answer definitively for me, so I give it feedback, and then the agent composes an email, which I can choose to accept or edit however I want. I also give the agent direct feedback that I'd like the email phrased differently.
+
+And the assistant will take care of it for us. So the ability to add human in the loop to our email assistant is what makes it much easier to deploy and use, since there's some assurance that it can't go off the rails and send an email that I don't want sent. So now let's show how to actually add human in the loop to our agent.
+
+You can see here we are on our map. We've built our agent. We tested it with LangSmith. Now we're going to show how to incorporate [00:02:00] interrupts into our graph that allow it to surface tool calls or notifications such that we can interact with them in Agent Inbox. We're going to add human in the loop in two places.
+
+We're going to add it after the router notifies the user, and we're going to add it prior to making certain sensitive tool calls, like send email or schedule meeting. Now we can define a few tools just like before, but with human in the loop, we have a new capability open to us. We can give the agent the ability to directly ask the user questions.
+
+Now, because the human is in the loop, the agent doesn't have to guess about how to respond to certain things. If it's unsure, it can just ask the user directly. So you'll see we're going to add this new tool, [00:03:00] Question, which just allows the agent to ask the user questions. Just like before, we'll initialize our model with the tools and we'll also set up our router.
+
+Our tools prompt has only changed slightly because now we make the agent aware of the fact that it has this question tool that it can call. Now our triage node is very similar to what we had before, but we're going to make one change. If the decision is to notify the user, we're then going to go to a node that will enable human in the loop.
+
+Remember, before, if the decision was to notify, we just ended, which is kind of lame. But now if the decision of the agent is to notify the user, we'll send that notification to Agent Inbox. We only need to make a simple little one line change right here to go to this new node called triage_interrupt_handler.
+
+Now let's talk about this triage interrupt handler. So here's [00:04:00] where we are in the overall flow. We've set up our triage node that's going to make a decision about what to do given the incoming email. Now if the decision is Notify, we want to let the user either Respond, in which case we'll go ahead and send it to the response agent, or just Ignore in which case we'll end.
+
+And so this new node triage_interrupt_handler is going to do something pretty simple. Remember in LangGraph 101, I mentioned that LangGraph has an interrupt mechanism which allows you to stop the graph and await for human feedback. We're going to use that here. And remember, the payload you pass to interrupt can be presented to the user.
+
+In this particular case, we're going to pass a payload to that interrupt that can be rendered in Agent Inbox. [00:05:00] Look at the code here. We'll get the email and we're going to format it nicely, and then we're going to create this request object. Okay. So this simply has, as the action, the classification decision. As config, we're going to allow, ignore, respond only. And description is the email.
+
+Now what is this? Might be a little bit confusing. Well, if you think back to Agent Inbox, these particular fields render specific elements in the inbox that the user can interact with. Let me show you an example of that. So here's Agent Inbox. Here's a case where we sent a notification from the router to the inbox.
+
+Let's click on that. So you can see in this case, the user has [00:06:00] two options. They can send a response as feedback saying, Hey, let's go ahead and respond to the email. If the user sends a response, the email assistant will go ahead and reply to the email. Or the user has the option you can see here to ignore.
+
+These are configured in that request schema that we provided, and if we briefly compare that to a case where the decision was a tool called a write_email, there's more options. The ability to edit or accept. Give feedback just as we had before or indeed ignore. So the key point is that the configurations you pass here determine what's rendered to the user in Agent Inbox.
+
+This description is rendered in the inbox right here. It's the email itself. And then finally, the action [00:07:00] is just very simply the title. In this case, you can see the action is email assistant notify, and that comes directly from here. So the point is, the fields of this request object are rendered directly in Agent Inbox and determine what the user sees and what the user can interact with.
+
+You can see we passed that request right here to the Interrupt. And you'll see that later, we can connect our deploy graph to Agent Inbox very easily such that all these interrupts are just sent to the inbox automatically for us. Now if you understand that, the rest of this is pretty simple.
+
+The interrupt receives the user's feedback in this response. With Agent Inbox, this is just a dictionary with a single key type to indicate [00:08:00] the type of the response that the user provided.
+
+In the case of Agent Inbox, this response is just a dictionary. Type indicates the type of response the user provided. Args represents the payload of the user specific feedback. So for example, if we provided feedback, that's of type response and we can extract the specific user input here, and we're just going to put that in a message.
+
+We're going to tell the assistant, Hey, listen, the user wants to reply after all, here's their feedback. And then we're going to go to the response agent. If the user ignored, then we just go to end and that's it. We use the command object just as we did before to go to the next node based upon the user's interaction with the inbox.
+
+Now, the LLM call is the same as [00:09:00] before. The only difference is we provide this human in the loop tools prompt because we now have the question tool. We want to ensure that it surfaces to the agent in its prompt. Now remember what's going to happen here? The LLM is going to make a tool call. It may be a tool that we now want to interrupt on.
+
+As an example, Question, write_email, or schedule_meeting are tool calls that we're going to consider to be sensitive and that we want to include a human in the loop before they're actually executed. This interrupt handler is going to do that. It's just going to be a new node. It's going to work very similarly to what we already saw, but in this case, it's just going to handle each tool call and the various Agent Inbox options we want associated with that particular tool call.[00:10:00] 
+
+Here's the overall flow of what's going to happen. Remember, we already took care of the triage router. If the user gave feedback in Agent Inbox, then we went ahead to the response agent to respond. If the user ignored, we end. Now let's think about the question tool, the same two user feedback options make sense there.
+
+The user can either respond to the question, giving the agent information. They can help it decide what to do next, or it can ignore the tool call, in which case we end. Likewise with write_email, the agent can ignore in which case we end, they can respond, which means give feedback. So the agent will then take that feedback and use it to formulate an improved tool call.
+
+But you're going to see two new options here. With write_email and schedule meeting, we also have the ability to [00:11:00] accept the tool call or edit it. If we accept it, it just runs the tool call as is, and we finish. If we edit it, we edit the tool call and then execute the edited tool arguments. So let's just add all this logic.
+
+The principles are exactly as we saw previously. It's just a matter of encoding all these different scenarios in our interrupt handler. We extract the tool calls, and here's where we have our list of tools that are allowed that we want to interrupt on with human in the loop. So if the tool calls not in that list, we just run it. We proceed easy enough.
+
+Now, just like we saw before, we're going to format the email for Agent Inbox and this will now be pretty familiar to you. These are just the configurations that we want to enable an Agent Inbox for the different tool calls. [00:12:00] With Question, as mentioned, we only will let the user ignore it or just respond directly. That's totally fine. In that case, there's no notion of editing or accepting.
+
+But with writing the email and scheduling the meeting, we allow the user all four options. They can ignore the tool call, they can respond with feedback. They can edit it or they can accept it. We format the interrupter request just like before.
+
+In this case though, we'll go ahead and pass as the action the tool call name, the tool call arguments. This allows Agent Inbox to render the tool call arguments explicitly. Pass the description. Pass that to interrupt and await human feedback in Agent Inbox. Now let's just run through the scenarios for the different types of feedback that the user can provide.
+
+If user accepts the tool call, we just run the tool. Easy enough. We create a tool message here. Now, if the user [00:13:00] edits the tool call, this one I want to walk through kind of carefully. So what happens is we get the edited arguments from the response object. Now let's think about what we actually want to do.
+
+So right now our email system made a tool call. Let's say the tool call is to write an email, but we've decided we want to edit it. What we actually want to do is propagate the edit to the tool call itself. So we basically want to edit the tool call, and then go ahead and execute the tool with the edited arguments.
+
+Now, you might say, who cares about editing the tool call? We have the new arguments. Let's just execute the tool with the new arguments without going back and editing the tool call itself. This is a subtle point I want to make sure is clear. [00:14:00] This can cause some side effects because imagine the message history then.
+
+You have a tool call from a model that says one thing, but the tool is executed with different arguments. The message history is inconsistent in that case. This may be confusing to the agent in subsequent loops, so that's why we actually go to the trouble to edit the tool call itself with the edit arguments, and then run the tool.
+
+And that's exactly what we do here. We go ahead and for write_email, run the tool, schedule_meeting, run the tool, and in both cases, just very simply add a tool message and proceed forward. That's the trickiest case to make sure you understand. The key point is that if we've edited, and the main point is that we want to make sure the message history is consistent [00:15:00] between the tool call and the arguments actually used to execute the tool.
+
+Now, if the user decides to ignore as shown previously, we just end in all cases. If the user provides feedback. Let's think about this. So in that case, the user's just saying in natural language what it would like the agent to do, and we just add that to our messages as a tool call indicating the feedback that the user gave.
+
+Now let's go ahead and compile the graph, and we can see now we go to the triage router. Depending on the decision, we may go to the interrupt handler. From there, the user will provide feedback, potentially go into the response agent or just ending. And in the response agent loop, the user is going to have the opportunity to provide feedback within this interrupt handler. And let's [00:16:00] review the different things that are going to happen as we showed in the above diagram and as we just walked through in the code.
+
+If an email is classified as notify, we interrupt to show the user the email. The user can ignore it or provide feedback. If the user provides feedback, we go to the response agent. Otherwise, if the user ignores it, we end. If the agent makes a tool call to write email, the system shows the proposed email to the human for review.
+
+The human can respond with feedback, in which case the agent will then try again. The human can accept it. The human can edit it or ignore it. In the case of ignore, we'll end. For schedule meeting, it's basically the same. And for question, the user can provide feedback, which is the answer to the question, or ignore it, in which case we end.
+
+So now let's see this working [00:17:00] in action. We'll compile our overall assistant with a check pointer. We'll prepare an email to pass in. We'll go ahead and run using stream, and we're going to run until our email assistant hits an interrupt. We can see it decides to respond and hits and interrupt. So here's the interrupt object.
+
+We printed the action request, which is very simply the tool call. It's the schedule meeting tool. Here's the proposed arguments. Now using the Python SDK, recall that we can use the command object to resume from an interrupt, and also recall that our graph expects, a list of dictionaries with a type key to indicate the action.
+
+Now, why was this? This is the format of the response we're going to get from Agent Inbox. That's why we designed our graph with it. We can still use it with the SDK just by [00:18:00] passing the correct response object. In this case, we'll say, let's accept. Now we hit another interrupt, which is at write_email, and here's the email arguments we can review.
+
+We can accept that and we finish. And we can look at the full list of tool calls, including an initial tool call to check calendar availability which we didn't interrupt on. And then a tool call to schedule meeting which we did indeed interrupt on. We approved, so we went ahead and ran that tool call. Write_email, again approved, tool call ran, and then the final tool call done was executed.
+
+So you can really easily see, just with the SDK here, how we interrupt at specific tool calls as an instrument in our graph and how we can go ahead and accept them. Now, of course we can do more than accepting, [00:19:00] we can actually edit tool calls. And let's show that in the SDK here. We're going to go ahead, run with an email until the first interrupt.
+
+Again, here's the schedule meeting tool call and arguments. Now let's modify that. You can see the duration here is 45 minutes. Let's just create some edited tool call args. I'll change the duration to 30 minutes and I'll run. Cool. And then the write_email tool runs, pauses, and let's just modify that email as well, pass in some edited args.
+
+Remember, in this case, we would just run command with resume and pass in as the payload both the type of the feedback as well as the edited arguments. And this is what our agent is going to receive from Agent Inbox automatically. It's kind of [00:20:00] interesting to see how you can supply those payloads yourself using the SDK. And we finish.
+
+Now I want to show you something kind of interesting. Let's go ahead and look at the whole message history. And this is a point I was making previously. Look at the tool call itself. You can see it has duration minutes being 30. Remember that's what we edited. The initial tool call was 45.
+
+This is edited because in the Interrupt handler, we actually performed the edit on the tool call itself, and now you see a little bit more clearly why. Imagine we didn't, we would've run the tool as you see here, with 30 minutes, but the tool call would've still had 45, so the message history would've been inconsistent.
+
+Then when the agent goes to write the email, [00:21:00] it could get confused. It'll see the tool call for 45, but it'll see the tool message for 30, and those inconsistencies can cause problems. That's why I went to the trouble to edit the tool call itself. And you can see our message history now is nice and consistent. In any case, you can also see our edited email here. You can also see our edited email tool call. And we finish.
+
+Now I want to show feedback. That's another interesting mechanism that I want to make sure is clear relative to edits. Let's go ahead and run up until the first interrupt with an email. Here's schedule meeting for 45 minutes, and now I'm going to provide feedback type response. I'm going to pass my response as a string right here.
+
+I'm going to tell it to schedule for 30 minutes instead of [00:22:00] 45 and just give it some free form preferences that I have. And run. So now what's interesting here, we see another tool call to schedule meeting but with the duration modified to 30 minutes, and again still at two o'clock.
+
+So the agent basically looks at this feedback and updates the tool call. Now this is different than editing. With editing, we actually edit the tool call itself and just let it run. But here we give natural language feedback and allow the agent to regenerate the tool call. So it's just a different way of interacting with the system that's appropriate in some scenarios.
+
+So now we can look at the tool call to write_email. We can provide some feedback like make it shorter and less formal. We can see the emails now updated to be it a little bit shorter and less formal, and then we can accept it.
+
+Let's look at the final list of messages [00:23:00] and I want to show you something interesting. You can see after the initial tool call, now our feedback is captured as a tool message and then the agent tries a second tool call. So it looks at our feedback as a tool message, tries again. And we see that again here also with the write_email tool.
+
+Now, interrupts also enable new tools. In particular, we added this question tool. Let's test an email that asks a very direct question, do I want Indian or Italian? And we can see the question tool is called. We can provide feedback as a response type. Go ahead and list our preference. Write email, Indian sounds great. Run it and we're done.
+
+So now I want to create a local deployment of our email assistant. [00:24:00] So we've seen nodes interact with our email assistant and provide feedback using the SDK.
+
+Now let's create a local deployment of our email assistant and connect it to Agent Inbox. So we run langgraph dev just as before. So we run langgraph dev that spins up Studio as discussed previously. Make sure we're on the email assistant human in the loop graph. We can go ahead and send an email. The router runs, response agent runs, and then our thread is interrupted, just as we just saw with the SDK.
+
+Now I want to carefully explain the current state of our deployment when this occurs. So as discussed here in the notebook, the server itself is stateless. The threads are just saved to our local file system. You can see this langgraph_api directory in the project folder. That's where all the threads live.
+
+Now in the hosted deployment, threads are stored in Postgres, [00:25:00] but locally, they're just here in your project folder. And what we're doing is we're just simply looking at the interrupted thread in Studio. Now we can actually connect with these files or interrupted threads using Agent Inbox.
+
+Click on the link here. Select add inbox. Add the name of our graph, add the URL for our local deployment, name it accordingly, add inbox. And we can see here is that thread. Same one we're looking at in Studio. So what's really happening here? Agent Inbox is just a simple way to view those files. Those files are interrupted threads in your local deployment.
+
+They're saved locally in your project directory. And you can open this up and we can look at it. We talked previously [00:26:00] all about how the configuration of the interrupt specifies what's rendered here. And this is all customized when you create the interrupt object as well. In this case, it's asking me the question.
+
+I'll respond, send the response to our graph. The graph then takes the response and use it to create a tool call, which is an email. I think I'm fine with this and I accept it. That sends off the email. Now you can see there's no interrupted threads in our local deployment anymore. We can go back to Studio and we can see that we finished right here with the done tool call.
+
+Now I want to also call out what did Agent Inbox actually send back to our graph? What we've done with the SDK, we can create a command object and use that to resume our graph. That's exactly what Agent Inbox does. It's just a very simple interface that allows us to [00:27:00] view the interrupted threads, which are all saved locally on a file system and respond to them. And inbox will just create a command object, send that back to our graph to proceed with the graph through the interrupt. That's all that's happening.
+
+So now we've seen that we've added interrupts at specific points in our graph, after notification, after specific tool calls. We can view them in Agent Inbox and use Agent Inbox as an interface to edit, approve, ignore, or provide feedback on our agent. Inbox is simply connected to interrupted threads, which are all saved locally. So you can think about inbox, it's like a simple interface for those files. And Inbox creates a command object, which is sent back to our graph to resume through the interrupt with whatever arguments we specify using inbox.
+
+
+
+=============================================
+File: LCA-Ambient-M5-L1-V2-Memory_compressed.txt
+=============================================
+
+[00:00:00] We built an email system that can triage emails, use tools to respond to them. We've evaluated it. We've also added human in the loop, but we don't have the ability to actually learn from that human feedback and that's where memory comes in. It's kind of the final piece of our assistant that's going to bring all this together.
+
+First, it's worth explaining memory and LangGraph very briefly. Your saw with human in the loop, we set up a checkpointer, which allowed us to pause our agent and wait for human feedback. That's what we call thread-scoped memory. Every interaction with our agent was a thread and threads allow us to retain conversation history over the course of a given interaction, even with interruptions.
+
+But what happens if we want to retain certain information across many different interactions, for example, with the user. That's where the notion of across-thread or long-term memory comes into play. And that's what we're going to be using right here.
+
+LangGraph comes with a built-in store [00:01:00] that enables this long-term memory. The store is just very simply a dictionary. It's just built into LangGraph for you for convenience. And there's also extensions that allow you to add custom stores if you want to. You can run it a few different ways. So in-memory is just a Python dict, but it has no persistence, so it's lost whenever, for example, your notebook environment terminates. It's very useful for quick prototyping.
+
+Now, when we run langgraph dev, that created a local development server for LangGraph, and that actually comes with a built-in store, which we can use. It's saved locally on your machine, and you'll see that we'll use it for testing with LangGraph Studio running locally. There's also LangGraph Platform that supports production deployments with Postgres.
+
+Now, let's show using the in memory store, import it here. In the store, anything you want to maintain as a memory is just namespaced [00:02:00] as tuple. And then we can use this put method to add memories to the store, providing a key and a value. So we just put with namespace, key, value. We can go ahead and get memories out very easily just with the search method as an example.
+
+And we can see here's our value. Now the store is accessible to us in any LangGraph node as long as we compile our graph with the store. And here's an example of that. Calling graph_compile with a checkpointer for thread-scoped memory, and a store for a cross-thread memory. Now, how's this relevant with our assistant?
+
+Well, remember you can look at our flow here. When we added feedback, as an example, responding to various tool calls or editing them, or even ignoring them. We didn't retain that information, but we can add a very simple step [00:03:00] to update our memory based on the provided feedback that gives our assistant the ability to capture our preferences so we don't have to continue telling it to do the same things.
+
+Now, let's set up our assistant, and for now we're going to use the same tools that we did with human in the loop. Now what's new here is that we're going to save information about the user in memory and update it when appropriate. So with memory, there's at least two questions to think about. How do you want the memory to be structured and how do you want to update it?
+
+Now for structure, to keep it really simple, let's just use strings. We already were passing in our LLM node default triage instructions, calendar preferences and response instructions just as strings. So let's just keep memories retained for these three categories as strings, but simply update them. Now, how do we want to update them?
+
+We can use an [00:04:00] LLM to look at any feedback and simply update the memory in place. So to set this up, we're just going to define some simple helper functions to work with memory. They're going to take the store and namespace and default content as inputs. Here's the method to search for memories. So basically the usual pass in a namespace.
+
+The namespace could be any of these three, user triage instructions, user calendar preferences, response preferences. And I'll go ahead and get from the store the memory for the namespace. If it exists, then we return the value. If it doesn't exist, then we initialize memory with the default and return that.
+
+So what happens is, at the initialization of our graph, if the store is empty, we'll initialize it with these default memories as a starting point. [00:05:00] And as we run, we'll update them with human feedback. Now, how do you update memory? This is where prompting comes into play.
+
+So the GPT-4.1 prompting guide actually has some nice tips. It's been trained specifically for instruction following. I just add some very simple instructions right here about how to update memories. It's very intuitive. Basically, look at the existing memory profile. Reflect on the feedback you're given based upon the message history presented, and update the memory profile accordingly.
+
+Provide those as instructions. Give it some specific reasoning steps. Give it some examples. And I pass in the current memory profile as well as messages. Then use the update memory function with the instructions, as we just defined. We pass in the current memory profile for the given namespace that we're working with. We also [00:06:00] pass in messages. Now these are just from the interaction with the application.
+
+Now these are just from our interaction with the email assistant and will contain any feedback that we want to give it. Then we're going to get a new profile out from this model invocation and we save it to the store.
+
+You'll see another little trick I use here. We call with_structured_outputs with this simple schema, which forces the model to return a string as the updated profile, along with a justification for the changes made. And this gives us a lot of transparency into updating of the memory profile.
+
+So overall it's pretty simple. We're storing three different memory profiles. These captured triage preferences, response preferences, and calendar preferences. They're stored as strings. We store them in the LangGraph store, and we use an LLM to update them based upon [00:07:00] any human in the loop feedback that the application, that our assistant receives.
+
+Now, the nice thing is this requires very few changes to our code. The triage router is exactly, is identical, to what we had before, no changes. We make only one small change to interrupt handler. Remember in the interrupt handler we processed, we handled user response feedback right here. This is where we appended the messages that the user wants to respond to the email given this feedback.
+
+All we need to do is update memory. We pass in the store, we also pass in the namespace. In this case, we want to update triage preferences to indicate that the user actually wanted to respond to this email rather than simply be notified. We ask the assistant to update triage preferences to capture this. If we ignore the [00:08:00] email go to end, but also update triage preferences because in this particular case, the user explicitly chose to ignore the notification, so we want that to be captured in our triage preferences.
+
+Now we can see in our LLM call, there's only one minor change. Here, we just fetch from memory calendar preferences and response preferences and plumb them into our system prompt. Rather than using the hard-coded default background, we'll use our memory, which is getting continually updated.
+
+Now our interrupt handler has to update memory based upon feedback, just as we saw in the triage handler. The rest of this code is identical to what we had previously. I just want to show you what changed. So if we edit a tool call, as an example, a write_email tool call, we're going to update memory accordingly, indicating that the [00:09:00] user edited the email response and update the email response preferences accordingly. You can see what we pass in as messages contains the initial tool call, the edited email and reinforcement for the instructions. This is a subtle point. The GPT-4.1 prompting guide mentioned that providing instructions at the start and end of prompt improves performance.
+
+And this is a tricky case where we don't want to omit anything from the existing memory profile. So adding these instructions at the start and end of the prompt improves performance. Same principles applied with schedule meeting, and likewise with ignore. In the case of ignore, we've decided that we don't care to make any of the tool calls.
+
+And that signals to our assistant that this email's not actually worth responding to. And so we make sure we update triage preferences accordingly. [00:10:00] And finally, with response, any feedback related to writing an email, updates the memory for response preferences, feedback related to scheduling emails, updates the calendar preferences. Now the rest of our assistant is the same as before. We continue until the done tool. We can see our graph looks just like before.
+
+Now we can test this and I'm going to add a simple helper function just to look at the contents of memory. Let's test accepting tool calls first. We're going to pass in an email we want to respond to, and right now we're going to compile our graph with a checkpointer for thread-scope memory, and with our store for long-term memory across-threads.
+
+We'll run into the first interrupt. We respond. Just as we saw before, we have an interrupt at schedule meeting and we can see the tool call args, but I also print out the triage preferences, response preferences, and calendar preferences. So this is the initial [00:11:00] state of the store because when we ran our agent, we initialized this store with our default preferences.
+
+We accept the schedule_meeting tool call, we accept the write_email tool call, and we finish. Now here I also print out the contents of the store. Let's look at one of these as an example. For calendar preferences, 30 minute meetings are preferred, but 15 minutes are also acceptable. Go up to the start.
+
+Look at it here. It's identical. Why is that? Because we accepted every tool call. We provided no feedback, and we never triggered memory formation. Remember from walking through the code, we only trigger memory formation when we add specific human in the loop feedback on certain tool calls. Now let's show that by testing, editing, and scheduling meetings.
+
+We'll run until the first interrupt, and now we'll look at the calendar preferences. 30 minute meetings are preferred, 15 minute meetings are [00:12:00] acceptable. Now let's edit this. We change the meeting from 45 minutes to 30 minutes. Change the start time so you modify the duration. Let's run. Cool. Now we're at that write email tool call.
+
+Let's look at something interesting here. Look at the current memory, look at calendar preferences, and we can see it's been modified. So now when schedule meetings prefer 30 minutes over longer duration, such as 45. So it looked at our edit and tries to generalize calendar preference rule changes. Now this of course, is a bit of an art.
+
+It's about prompting the LLM to make these updates to the memory profile. But the nice thing is it's totally transparent and you can just modify the prompt above as we defined in the update memory function. Another interesting thing it noticed is that we changed the title. We called this tax planning discussion. Here it was tax planning strategy discussion.
+
+It saw that change and made a note to update the subject line for the [00:13:00] meeting request. Again, it's pretty cool. The LLM will reflect on any changes we made via feedback and use that to update memory. It's all entirely configurable in the prompt you provide.
+
+Now let's look at the response here. You can see it's kind of a long response, and let's say I want to edit that tool call and I make it a little bit more short. Run that. Now, what's pretty cool is it looks at a response and adds a new line item that tries to generalize from what we did. When scheduling meetings, prefer to propose a single specific time and ask the recipient to confirm if that works, rather than scheduling unilaterally or offering multiple options unless necessary. So anyway, it's just our memory update LLM call attempting to generalize from the edits we made. And you can prompt this any way you want.
+
+And again, we can look at the full message history. So this is identical to what we saw previously with our edited tool calls. What's nice is our system has tried to generalize [00:14:00] updates to the rules based upon the edits we made. So next time around the system should be closer aligned with our preferences.
+
+Now let me show another interesting trick. Just like before I'm in Studio now, go ahead and open up email assistant human in the loop memory. You can see here's our graph with memory. We can pick an email and pass it to our assistant. We'll hit an interrupt just like before, but I want to show you something kind of interesting.
+
+In Studio, click on this memory tab. This actually opens up and allows you to visualize memory in the store for our locally running Studio deployment. Now remember, we ran this in the notebook you were using an in-memory dictionary, which of course is nuked as soon as we kill the notebook kernel. But in this particular case, it's a pickle dictionary, which is persisted for us on our local machine. It's of course not for production, but it's appropriate for local testing.
+
+We can see our memories have [00:15:00] been initialized. We haven't provided any feedback yet, but memories exist now in the store. Now go to Agent Inbox. Here's the email. Let's edit it. Now, instead of the long response, I say something very terse and I submit that.
+
+So I'm not accepting, now I'm editing. Our graph runs and it finished. Now I want to show you something interesting. Go to LangSmith. When we look at the trace, we can see here is the tool call that was made. This is the edit we made in Agent Inbox. Now, what's this thing? Open this up. This is the memory update.
+
+You can see it called our user preferences schema. Here is our memory prompt that contains instructions. Here is what happened, and we reinforce those instructions at the end. Then here is the updated profile. And what I like is it provides this justification. User edited the assistant's technical question response to be more concise and friendly, [00:16:00] removing explicit mention of investigation steps. Brief acknowledgement and less formal tone is acceptable. And that's why and how it updated our response preferences. So we'd see exactly why it did in this justification.
+
+Now, if you go back to Studio, open up memory, we can see user preferences for responding, were updated a bit more recently. So look at that. And the profile's updated to include this point about using concise and friendly language. So you can see how powerful it is. We just add this little step to update memory based upon feedback, and it makes our assistant much more personalized over time.
+
+So you can kind of see how this brings together a lot of ideas. An agent with human in the loop to review actions and memory to learn from any responses from user feedback.
+
+Now, I do want to show how you could actually deploy this and hook [00:17:00] it up to your Gmail. So if you look at the repo, you can see in the email system directory, there's this tools folder. So we've been using these default tools.
+
+These are just mock tools. They don't actually connect to anything, and they're obviously great for just testing. There's also this Gmail folder, which has its own readme, and there's a graph email_assistant_hitl_memory_gmail that's already configured to use them. Now what you're going to want to do is set up your credentials. First, you enable both the Gmail and Calendar APIs.
+
+Follow the instructions here. Then go through this fairly quick OAuth process. We're going to create a new desktop application. You may need to add yourself as a test user if you're using a personal email account. Now, the key point is you're going to save the downloaded JSON file and add it to this directory [00:18:00] tools/gmail/.secrets. Then run this script to create a token, and that's actually all you need.
+
+Now the repo explains how to use this with a local deployment. So it's just like before you run langgraph dev. But we have this nice run_ingest script, that'll go ahead and ingest emails from a particular email address.
+
+Here's my work email, which I've configured. You can specify the time range over which you want to get emails, and you can see there's some useful parameters here. And what's happening under the hood is this is just using the Gmail API to go ahead and filter emails based upon the parameters you provided here.
+
+In particular minutes-since and the email address, of course. Now the principles of the agent are all the same. The only difference is we've just swapped out the tools instead of a mock send email. Now the tool actually connects to the Gmail API, and [00:19:00] you can see that all in this Gmail tools file here. And you can scroll down this file and you can see the tools that we actually define, like send email, check calendar, schedule meeting and so forth.
+
+Now, once you've set up your Gmail credentials, if you want to just use a host deployment through LangGraph Platform, it's pretty simple. Go to LangSmith, click on deployments, select new deployment. This can be connected to your GitHub and just connect to the fork of this repo. You can select another branch. You can name your deployment here. And here just add that API key for whatever model you're using, for example OpenAI. And importantly, as shown here, just add your authentication as Gmail Secret and Gmail Token. When you're done, you're going to hit submit. That'll create a deployment.[00:20:00] 
+
+As an example, here's a deployment for my own work email, and what's pretty cool is I can see kind of traces over time.
+
+Here's all the emails and the classification decisions. I can look at them all here, and you're going to see here, this is the URL for my deployment. Now, if you open Agent Inbox, just like before add inbox, add your deployment URL, it'll ask for your LangSmith API key. Just like before, provide the assistant name.
+
+In our case it's going to be this and add the inbox. Now once you're deployed, you can still run ingest just like before and just apply the URL of your deployment. So that's if you want to run a one-time ingest. If you want to set this up as a cron job, you can just run this. Set up cron with your email, with your deployment URL.
+
+And what this does, it uses [00:21:00] the LangGraph SDK to set up a cron job for your deployed graph. By default, it just runs every 10 minutes and checks the Gmail API to see if any new emails came in that meet our criteria. You can look at that right here, setup_cron.py where the inputs of the cron are configured.
+
+This is where we use the LangGraph SDK, to create a cron for our graph, and then that cron is kicked off. Now once we set up our deployment and the cron, we can just add our deployment to Agent Inbox really easily. Add the deployment URL. It'll add your LangSmith API key as well. Name it and then add a graph accordingly here.
+
+So here's an example of my work email. This is scrubbed for anything that's interesting or sensitive. All I can see is that my windsurfer seat came in. No surprise there. I use Windsurf, I use Cursor. [00:22:00] I use Claude code. So this is a dummy email that I sent myself. It's a question. I'll respond with yes and great. I like the response and I go ahead and send that off, and I can see that in my sent folder in my actual Gmail.
+
+And so we've seen the process of creating a hosted deployment using LangGraph Platform and connecting that to Agent Inbox. Now let me just reinforce a bit of what happened here. With a hosted deployment we're using Postgres as our persistence layer. So this both manages the store as we saw above for memories and it saves all of our threads. So in this case, what's happening is Agent Inbox is just connected to the threads saved in our host deployment's Postgres and allows us to visualize them just as we did before with the local deployment.
+
+Now, to close all this out, I do want to call out that there's a [00:23:00] lot more you can do with memory. Remember, currently our memory schema is as simple as possible, just to introduce the concepts. Our schema is a string, and we're always overwriting that existing memory with a new string. Now, one of the questions that comes up a lot is what happens over time and will memory kind of blow up as you continue to learn more and more about the user?
+
+And the answer is, it may. That's actually why the store used here with our LangGraph deployment can be easily configured for different search modalities. Notably semantic search over a collection of memories. This is one alternative way to do search across a large set of memories based upon semantic similarity.
+
+You can also get much more sophisticated with the schema of your memory rather than just using a string and overwriting it, consider LangMem, which has a lot of useful primitives for memory management. So memory is a big theme, [00:24:00] and I'll let you read the documentation on LangMem to learn more about it.
+
+But the point is, this is just introducing the concept that human in the loop and memory work very well together to create systems that have feedback and personalization built into them. So to close out this course, I just want to reinforce everything that we did.
+
+First, we laid the foundations for LangGraph. We talked about the basics of LangGraph nodes and edges. We talked about persistence. We talked about the fundamentals of agents versus workflows. We introduced the interrupt mechanism. We talked about deployments in LangGraph using LangGraph Platform. Then we built the agent, as we see here in blue, we use LangGraph to do that. We tested it using LangSmith, showcasing the Evaluate API and pytest.
+
+We showed how to build unit tests for agents as well as end-to-end evaluations. In that case, using LLM as judge evaluator. [00:25:00] We showed how to add human feedback and introduce an interface, Agent Inbox, to view interrupted threads for our agent. And we finally closed the loop with memory updating. So based upon human feedback, we showed how to update memories, which dictated our response preferences, calendar preferences, as well as triage preferences.
+
+We also mentioned briefly at the end here that memory is a big theme and there are many other ways to structure memories with particular schemas as collections and / or using different search methods like semantic similarity. We also showed how to connect this agent to your actual Gmail and showed that working in Agent Inbox for my personal email account.
+
+Even if email is not the application you're most interested in, the principles as shown here, building agents, testing them, adding human in the loop, adding memory are generally applicable and this architecture can be applied to many different [00:26:00] types of ambient agents that work using different triggers and perform different actions by simply replacing the tool set used.
+
+You can see that tools directory where we swapped out our initial default email tools for Gmail is a pretty nice modular way to just try different tools with these basic architecture components. So overall, hopefully this was a useful overview of building ambient agents, what ambient agents are, and how LangGraph supports building agents using these general components.
+
+Thanks.
+
+
+
+=============================================
+File: LCA-Ambient-M6-L1-V2-Deploy_compressed.txt
+=============================================
+
+[00:00:00] So we've built our email assistant, we've added human in the loop, we've added memory, we've evaluated it. I want to talk a bit more about how you could actually deploy it. Now. Throughout the past few lessons, we've been using what we called local deployment. So what was happening? We were running the command langgraph dev that was spinning up a LangGraph server locally.
+
+That LangGraph server exposed the scripts in a repo with a number of useful API endpoints. That server was connected to LangGraph Studio, which allowed us to interact with our graph. And then locally running server was also connected to Agent Inbox. Now, when we interacted with those locally running graphs, all threads were just saved locally on my laptop in this repo.
+
+And the store was just a pickled dict in this repo. And this is all great for prototyping, but if I actually wanted a production agent. For example, monitoring [00:01:00] my true email running every day, running it locally on my laptop isn't really a scalable approach. In that particular case, I'd want a host deployment.
+
+Now you can look at the documentation linked here for various deployment offers with LangGraph, which we talked about previously, and you can see some of the options here. Again, we talked about local deployment here. There's also a standalone container. And those are both free options. LangGraph Platform has a few other deployment options, which are more suitable for production workloads.
+
+You can browse various options, but this Cloud SaaS is what I'll show as one fully hosted deployment option you can consider, and with that hosted option, you can see a few different things. Rather than running langgraph dev, for example, in the repo, we're going to connect a GitHub repo to LangSmith directly.
+
+[00:02:00] Threads are saved to Postgres. The store is saved in Postgres. This is much better for production as we'll see shortly. So this is something that I've actually connected up to my Gmail and just have it running in the background daily on all of my work emails. Now, what do we get out of using LangGraph Platform to handle our deployment of this particular agent?
+
+So really for this use case, the main benefits are going to be. Built in checkpointing and memory management, which also supports human in the loop. Some of these other things we're going to be using as well, we're going to be kicking off background runs for all the ingested emails. Responses could be long running. In our particular case, typically responding to the emails is pretty quick. But LangGraph Platform does support longer running jobs if necessary. And we did showcase using LangGraph Studio quite a bit, which is a very nice way to quickly inspect and debug our deployment. Now, the final thing [00:03:00] I want to mention just to set the stage here, is the application structure needed for LangGraph deployment.
+
+I mentioned this at the very beginning in LangGraph 1 0 1, but I just want to reinforce it, that our repo has a structure, looks something like this. We have the code for our graphs, environment variables. This LangGraph JSON configuration and our dependencies, this general structure is all we need to actually deploy with LangGraph Platform.
+
+So let's look at a repo itself and we can kinda see that structure mimicked. Dependencies here. LangGraph JSONs here. Here's the actual langgraph.json for our project. You can see this links to all the various implementations of our email assistant. They're all named accordingly. And then of course, if you click here I can see this is where all of our graphs live, just as noted in langgraph.json.
+
+So our repo is organized in a way that we can deploy. We've of course already seen that by running local [00:04:00] deployments with langgraph dev. Now, before we set up our deployment, I want to call out something kind of interesting.
+
+We just mentioned that persistence is one of the main benefits we get out of LangGraph Platform. Now I'm showing the LangGraph 1 0 1 notebook here. Remember in notebooks, we were just specifically defining checkpointer, like in this case, this in memory saver, and we're specifying it when we compiled our graph.
+
+Here's an example of using create_react_agent, and here's a simpler case of showing interrupts and just compiling our graph by specifying the checkpointer. Okay. Now, if we look at the scripts in this email assistant directory, let's look at, for example, the human in the loop in memory script. Right here. Scroll down.
+
+We go ahead and compile our email assistant, but we didn't supply a checkpointer. This is a subtle point. Why is that? That's because [00:05:00] these scripts are going to need to be deployed with LangGraph Platform. LangGraph Platform automatically supplies our checkpointer and store to the graph when we create a deployment, so we actually don't need to specify it here when we compile the graph.
+
+I want to call that as a subtle but important note. When you're doing testing in a notebook environment, as an example, you'll specify the checkpointer or store and compile a graph with them. But in these scripts that we're going to deploy with LangGraph Platform, we don't need to explicitly supply the checkpointer or the store when we compile the graph because LangGraph Platform will automatically supply those for us.
+
+Now, as mentioned in the local deployment, they're going to be saved locally and memory is just going to be a pickle dictionary. Whereas with the hosted deployment, Postgres will be used to both store checkpoints in threads as well as long-term memory. But the point is LangGraph Platform takes care of creation of the checkpointer and [00:06:00] store for us when we compile the graph in both cases, so it's not something we need to supply explicitly.
+
+Now let's talk about using a host deployment with our agent here. So if you look at the repo, you can see in the email assistant directory, there's this tools folder. So we've been using these default tools. These are just mock tools. They don't actually connect to anything, and they're obviously great for just testing.
+
+There's also this Gmail folder, which has its own Read Me, and there's a graph email_assistant_hitl_memory_gmail.py that's already configured to use them. Now, what you're going to want to do is set up your credentials. First, you enable both the Gmail and Calendar APIs. Follow the instructions here. Then go through this OAuth process where you're going to create a new desktop application, and you may need to add yourself as a test user if you're using a personal email account. Now, the key point is you're going to save [00:07:00] the downloaded JSON file and add it to this directory tools/gmail/.secrets, then run this script to create a token, and that's actually all you need.
+
+Now the repo explains how to use this with a local deployment. So it's just like before, you run langgraph dev, but we have this nice run_ingest script. it'll go ahead and ingest emails from a particular email address. Here's my work email, which I've configured. You can specify the time range over which you want to get emails, and you can see there's some useful parameters here.
+
+And what's happening under the hood is this is just using the Gmail API to go ahead and filter emails based upon the parameters you provided here, in particular, minutes_since, and the email address, of course.
+
+Now the principles of the agent are all the same. The only difference is we've just swapped out the tools instead of a [00:08:00] mock send email. Now the tool actually connect to the Gmail API, and you can see that all in this gmail_tools file here. And you can scroll down this file, and you can see the tools that we actually define, like send email, check calendar, schedule meeting, and so forth. Now, once you've set up your Gmail credentials, if you want to use a host deployment through LangGraph Platform, it's pretty simple.
+
+Go to LangSmith. Click on deployments, select new deployment. This can be connected to your GitHub. And just connect to the fork of this repo. You can select whatever branch. You can name your deployment here. And here, just add the API key for whatever model you're using, for example, OpenAI. And importantly, as shown here, just add your authentication as GMAIL_SECRET and GMAIL_TOKEN.[00:09:00] 
+
+When you're done, you're going to hit submit. That'll create a deployment. As an example, here's a deployment for my own work email, and what's pretty cool is I can see kind of traces over time. Here's all the emails and the classification decisions. I can look at them all here and you're going to see here, this is the URL for my deployment.
+
+Now once you're deployed, you can still run ingest just like before and just apply the URL of your deployment. So that's, if you want to run a one-time ingest. If you want to set this up as a cron job, you can just run this setup_cron with your email, with your deployment URL. And what this does, it uses the LangGraph SDK to set up a cron job for your deployed graph. By default, just runs every 10 minutes and checks Gmail API to see if any new emails came in that meet our criteria.[00:10:00] 
+
+You can look at that right here, setup_cron.py where the inputs of cron are configured. This is where we use the LangGraph SDK to create a cron for our graph, and then that cron is kicked off. Now once we set up our deployment and the cron, we can just add our deployment to Agent Inbox really easily.
+
+Add the deployment URL. It'll add your LangSmith API key as well. Name it. Then add your graph accordingly here. So here's an example of my work email. This is scrubbed for anything that's interesting or sensitive. All I can see is that my windsurfer receipt came in. No surprise there. I use windsurf, I use Cursor, I use Claude code.
+
+So this is a dummy email that I sent myself. It's a question, I'll respond with, Yes and great. I like the response and I go ahead and send that off. [00:11:00] And I can see that in my sent folder in my actual Gmail. And so we've seen the process of creating a hosted deployment using LangGraph Platform and connecting that to Agent Inbox.
+
+Now let me just reinforce a bit of what happened here. With the hosted deployment, we were using Postgres as our persistence layer. So this both manages the store as we saw above for memories, and it saves all of our threads. So in this case, what's happening is Agent Inbox is just connected to the threads saved in our host deployments Postgres, and allows us to visualize them just as we did before with the local deployment.
+
+Now, to close all this out, I do want to call out that there's a lot more we can do with memory. So remember, currently our memory schema is as simple as possible. Just introduced the concepts. Our schema is a string, and we're always overwriting that existing memory with a new string. Now one of the questions that comes up a lot [00:12:00] is what happens over time and will memory kind of blow up as you continue to learn more and more about the user?
+
+And the answer is, it may. That's actually why the store used here with our LangGraph deployment can be easily configured for different search modalities. Notably semantic search over a collection of memories. This is one alternative way to do search across a large set of memories based upon semantic similarity.
+
+You can also get much more sophisticated with the schema of your memory rather than just using a string and overwriting it. Consider LangMem, which has a lot of useful primitives for memory management. So memory is a big theme, and I'll let you read the documentation on LangMem to learn more about it.
+
+But the point is, this is just introducing the concept that human in the loop and memory work very well together to create systems that have feedback and personalization built into them.
+
+So to close [00:13:00] out this course, I just want to reinforce everything that we did. First, we laid the foundations for LangGraph. We talked about the basics of LangGraph nodes and edges. We talked about persistence. We talked about the fundamentals of agents versus workflows. We introduced the interrupt mechanism and we talked about deployments in LangGraph using LangGraph Platform. Then we built the agent as we see here in blue. We used LangGraph to do that, we tested it using LangSmith, showcasing the Evaluate API and Pytest.
+
+We showed how to build unit tests for agents as well as end-to-end evaluations, in that case using LLM as judge evaluator. We showed how to add human feedback and introduced an interface, Agent Inbox, to view interrupted threads for our agent. We finally closed the loop with memory updating. So based upon human in the loop feedback, we showed how to update memories, which [00:14:00] dictated our response preferences, calendar preferences, as well as triage preferences.
+
+We also mentioned briefly at the end here that memory is a big theme and there are many other ways to structure memories with particular schemas as collections and / or using different search methods like semantic similarity. We also showed how to connect this agent to your actual Gmail and showed that working in Agent Inbox for my personal email account.
+
+So even if email is not the application you're most interested in, the principles as shown here, building agents, testing them, adding human in the loop, adding memory are generally applicable. And this architecture can be applied to many different types of ambient agents that work using different triggers and perform different actions, by simply replacing the tool set used.
+
+You can see that tools directory where we swapped out our initial default email tools for Gmail is a [00:15:00] pretty nice modular way to just try different tools with these basic architecture components. So overall, hopefully this was a useful overview of building ambient agents, what ambient agents are, and how LangGraph supports building agents using these general components.
+
+Thanks.
+
+

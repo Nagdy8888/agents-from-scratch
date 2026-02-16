@@ -36,6 +36,13 @@ python3 -m pip install --upgrade pip
 pip install -e .
 ```
 
+### Dependency workflow (uv) — avoid lock/sync errors
+
+- **Commit `uv.lock`**; do not commit `.venv` (it is in `.gitignore`).
+- **After `git pull`:** run `uv sync --extra dev` so your `.venv` matches the updated `uv.lock`.
+- **When you add or change dependencies** in `pyproject.toml`: run `uv lock`, then commit both `pyproject.toml` and `uv.lock`.
+- **If you get merge conflicts in `uv.lock`:** resolve conflicts in `pyproject.toml` first, then run `uv lock` and use the regenerated `uv.lock` (discard the conflicted lock file).
+
 ## Agent Implementations
 
 ### Scripts 
